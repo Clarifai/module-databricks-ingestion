@@ -1,2 +1,4 @@
-clarifai==9.8.1
+clarifai==9.10.4
 streamlit==1.24.0
+databricks-connect==13.3
+stqdm==0.0.5
