@@ -70,33 +70,39 @@ st.write(
 tab1,tab2=st.tabs([f'**Databricks Unity catalog Volume**',f'**S3**'])
 
 with tab1:
-    catalog=[catalog.full_name for catalog in wc.catalogs.list()]
-    catalog_selected = st.selectbox(f"**List of catalogs available**", catalog, index=1)
+    file_type=st.radio(f"**Choose file type**",['Delta Table','csv file'],key="file_type",horizontal=False)
+    st.write("")
+    table_loc=False
+    if file_type=="Delta Table":
+        table_loc=st.toggle("**_select table under catalog_**",key="table_loc")
 
-    if catalog_selected:
-        st.session_state.reset_session = True
-        schema= [schema.name for schema in wc.schemas.list(catalog_name=catalog_selected)]
-        schema_selected = st.selectbox(f"**List of schemas available**", schema)
+    if table_loc or file_type=="csv file":
+        catalog=[catalog.full_name for catalog in wc.catalogs.list()]
+        catalog_selected = st.selectbox(f"**List of catalogs available**", catalog, index=1)
 
-    if schema_selected:
-        st.session_state.reset_session = True
-        volumes=[vol.name for vol in wc.volumes.list(catalog_name=catalog_selected, schema_name=schema_selected)]
-        volume_selected = st.selectbox(f"**List of volumes available**", volumes)
-        st.session_state.reset_session = True
+        if catalog_selected:
+            st.session_state.reset_session = True
+            schema= [schema.name for schema in wc.schemas.list(catalog_name=catalog_selected)]
+            schema_selected = st.selectbox(f"**List of schemas available**", schema)
+            if schema_selected and file_type=="Delta Table":
+                tables=[table.name for table in wc.tables.list(catalog_name=catalog_selected, schema_name=schema_selected)]
+                table_selected = st.selectbox(f"**List of tables available**", tables)
+                table_name=f"`{catalog_selected}`.`{schema_selected}`.`{table_selected}`"
+
+        if schema_selected and file_type=="csv file":
+            st.session_state.reset_session = True
+            volumes=[vol.name for vol in wc.volumes.list(catalog_name=catalog_selected, schema_name=schema_selected)]
+            volume_selected = st.selectbox(f"**List of volumes available**", volumes)
+            file_selected=st.text_input(f"**Please enter the file name**", key="csv_file_name")
+            table_name='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected+'/'+file_selected
+            st.session_state.reset_session = True
+
+    if not table_loc and file_type=="Delta Table":
+        table_name=st.text_input(f"**Please enter the table name**", key="table_name")
     
-    cat_sch_vol=""
-    if volume_selected:
-      cat_sch_vol='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected
-      st.session_state.reset_session = True
-    
-    file_type=st.radio(f"**choose file type**",['csv','Delta'],key="file_type",horizontal=True)
-    if volume_selected:
-            file_path3=st.text_input(f"**Please enter source file name of the file to be uploaded**", key="volumepath")
-            file_path3=cat_sch_vol+'/'+file_path3+'/'
-    
+    #Clarifai APP 
     #To give some space above the logo
     st.write("##")
-
     st.write(f'<div class="logo">{space}Clarifai App</div>', unsafe_allow_html=True)
     st.write(
     '<div class="logo-container">'
@@ -119,11 +125,11 @@ with tab1:
         dataset = Dataset(dataset_id=params['dataset_id'])
     
     if st.button('Upload', key='one'):
-        upload_trigger_function(file_path3,dataset_id,input_obj,ann_labels_only,file_type,spark)
+        upload_trigger_function(table_name,dataset_id,input_obj,ann_labels_only,file_type,spark)
               
 
 with tab2:
-  file_type=st.radio(f"**choose file type**",['csv','Delta'],key="file_type2",horizontal=True)
+  file_type=st.radio(f"**choose file type**",['csv','Delta'],key="file_type2",horizontal=False)
   file_path3=st.text_input(f"**Please enter source file name of the file to be uploaded**", key="s3path")
   st.write("##")
 
@@ -149,4 +155,4 @@ with tab2:
         dataset = Dataset(dataset_id=params['dataset_id'])
 
   if st.button('Upload', key='two'):
-        upload_trigger_function(file_path3,dataset_id,input_obj,ann_labels_only,file_type,spark)
+        upload_trigger_function(file_path3,dataset_id,input_obj,ann_labels_only,file_type,spark, source="S3")

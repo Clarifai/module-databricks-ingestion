@@ -243,7 +243,7 @@ def upload_from_dataframe(dataframe,
     except Exception as e:
         st.write(f'error:{e}')
 
-def upload_trigger_function(file_path,dataset_id,input_obj,ann_labels_only,file_type,spark_session):
+def upload_trigger_function(table_name,dataset_id,input_obj,ann_labels_only,file_type,spark_session, source = "Databricks"):
    
    """Uploads the file to the clarifai app's dataset. Once upload button is triggered
    Args:
@@ -257,14 +257,16 @@ def upload_trigger_function(file_path,dataset_id,input_obj,ann_labels_only,file_
     Returns:
        Displays success message once the upload is done."""
    try:
-        if file_type=="csv":
-            #df1=df1.toPandas() -->works fast
-            df1 = spark_session.read.csv(file_path,header=True, inferSchema=True)
-        elif file_type=="Delta":
-            df1=spark_session.read.format("delta").option("header", True).load(file_path)
+        if file_type=="csv file":
+            df1 = spark_session.read.csv(table_name,header=True, inferSchema=True)
+        elif file_type=="Delta Table":
+            if source=="S3":
+              df1=spark_session.read.format("delta").option("header", True).load(table_name)
+            else:
+              df1=spark_session.sql(f"SELECT * FROM {table_name}" )
 
         with st.spinner('In progress...'):
-            st.write("File to be uploaded",df1.toPandas().head(5))  
+            st.write("File to be uploaded (Preview of sample structure from first 10 records)",df1.toPandas().head(5))  
         my_bar = st.progress(0, text="Uploading ! Please wait.")
         upload_from_dataframe(dataframe=df1,
                                 bar=my_bar,

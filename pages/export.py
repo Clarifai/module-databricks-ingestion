@@ -93,24 +93,18 @@ st.write(
 
 tab1,tab2=st.tabs([f'**Databricks Unity catalog Volume**',f'**S3**'])
 with tab1:
-    catalog=[catalog.full_name for catalog in wc.catalogs.list()]
-    catalog_selected = st.selectbox("**List of catalogs available**", catalog)
+    table_landing=st.toggle("Create table under catalog")
+    if table_landing:
+        catalog=[catalog.full_name for catalog in wc.catalogs.list()]
+        catalog_selected = st.selectbox("**List of catalogs available**", catalog)
 
-    if catalog_selected:
-        schema= [schema.name for schema in wc.schemas.list(catalog_name=catalog_selected)]
-        schema_selected = st.selectbox("**List of schemas available**", schema)
+        if catalog_selected:
+            schema= [schema.name for schema in wc.schemas.list(catalog_name=catalog_selected)]
+            schema_selected = st.selectbox("**List of schemas available**", schema)
 
-    if schema_selected:
-        volumes=[vol.name for vol in wc.volumes.list(catalog_name=catalog_selected, schema_name=schema_selected)]
-        #st.write(f'volumes : {(volumes)}')
-        volume_selected = st.selectbox("**List of volumes available**", volumes)
-    if volume_selected:
-        cat_sch_vol='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected
     
     with st.form(key="data-inputs-2"):
-        file_path1=st.text_input("**Please enter folder name for delta table**")
-        if volume_selected:
-            file_path1=cat_sch_vol+'/'+file_path1+'/'
+        table_name=st.text_input("**Please enter the delta table name**")
         submitted_1=st.form_submit_button('Export')
         if submitted_1:
             try:
@@ -124,13 +118,17 @@ with tab1:
                     df2=export_inputs_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
 
                 with st.spinner('In progress...'):
-                    st.write("File to Export",df2.head(10))
+                    st.write("File to Export (Preview of sample structure from first 10 records)",df2.head(10))
                     df2=spark.createDataFrame(df2)
+
                     my_bar.progress(int(80))
-                    df2.write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(file_path1)
+                    if table_landing:
+                       table_name= f"`{catalog_selected}`.`{schema_selected}`.{table_name}"  
+                    df2.write.mode('overwrite').option("overwriteSchema", "true").saveAsTable(table_name)
                     my_bar.progress(int(100))
                     st.success(f'Export annotation done successfully !!') 
                     st.balloons()
+
             except Exception as e:
                 st.write(f'error:{e}')
 
