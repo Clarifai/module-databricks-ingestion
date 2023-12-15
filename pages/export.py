@@ -20,14 +20,14 @@ auth = ClarifaiAuthHelper.from_streamlit(st)
 os.environ['CLARIFAI_PAT']=st.secrets.CLARIFAI_PAT
 
 config = Config(
-  host       = st.secrets.host,
-  token      = st.secrets.token,
-  cluster_id = st.secrets.cluster_id
+  host       = st.secrets.DATABRICKS_HOST,
+  token      = st.secrets.DATABRICKS_TOKEN,
+  cluster_id = st.secrets.DATABRICKS_CLUSTER_ID
 )
 spark = DatabricksSession.builder.sdkConfig(config).getOrCreate()
-wc = WorkspaceClient(host= st.secrets.host,token= st.secrets.token,)
+wc = WorkspaceClient(host= st.secrets.DATABRICKS_HOST,token= st.secrets.DATABRICKS_TOKEN,)
 
-st.title("Databricks UI module for Export")
+st.title("Databricks UI Module for Export")
 
 if 'reset_session' not in st.session_state:
     st.session_state.reset_session = False
@@ -91,7 +91,7 @@ st.write(
   unsafe_allow_html=True,
 )
 
-tab1,tab2=st.tabs([f'**Databricks Unity catalog Volume**',f'**S3**'])
+tab1,tab2=st.tabs([f'**Databricks Unity Catalog**',f'**S3**'])
 with tab1:
     table_landing=st.toggle("Create table under catalog")
     if table_landing:
