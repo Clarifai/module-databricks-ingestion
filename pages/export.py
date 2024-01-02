@@ -10,7 +10,7 @@ from databricks.sdk.core import Config
 from databricks.sdk import WorkspaceClient
 from google.protobuf.json_format import MessageToJson
 
-from utils.functions import export_annotations_to_dataframe, export_inputs_to_dataframe, list_dataset, list_user_apps
+from utils.functions import export_annotations_to_dataframe, export_inputs_to_dataframe, list_dataset, list_user_apps, export_images_to_volume
 
 st.set_page_config(layout="wide")
 ClarifaiStreamlitCSS.insert_default_css(st)
@@ -79,7 +79,7 @@ if apps:
         "app_id": apps,
         "dataset_id": dataset_id
     }
-    ann_labels_only=st.checkbox("_Only export inputs with annotations_",key="ann_labels_only")
+    #ann_labels_only=st.checkbox("_Only export inputs with annotations_",key="ann_labels_only")
 
 st.write("###")
 
@@ -101,8 +101,15 @@ with tab1:
         if catalog_selected:
             schema= [schema.name for schema in wc.schemas.list(catalog_name=catalog_selected)]
             schema_selected = st.selectbox("**List of schemas available**", schema)
+    export_images=st.checkbox("**Export images**",key="export_images")
+    if export_images and not table_landing:
+        export_path=st.text_input("_Please enter volume path for image_", key="export_volume_path") 
+    if export_images and table_landing:
+        if schema_selected:
+            volumes=[vol.name for vol in wc.volumes.list(catalog_name=catalog_selected, schema_name=schema_selected)]
+            volume_selected = st.selectbox("**List of volumes available**", volumes)
+            export_path='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected+'/' 
 
-    
     with st.form(key="data-inputs-2"):
         table_name=st.text_input("**Please enter the delta table name**")
         submitted_1=st.form_submit_button('Export')
@@ -111,12 +118,10 @@ with tab1:
                 obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
                 dataset = Dataset(dataset_id=params['dataset_id'])
                 my_bar = st.progress(0, text="Exporting ! Please wait.")
-
-                if ann_labels_only:
-                    df2=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
-                else:
-                    df2=export_inputs_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
-
+                df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
+                if export_images and export_path is not None :
+                        export_images_to_volume(df3, export_path, wc)
+                
                 with st.spinner('In progress...'):
                     st.write("File to Export (Preview of sample structure from first 10 records)",df2.head(10))
                     df2=spark.createDataFrame(df2)
@@ -134,18 +139,16 @@ with tab1:
 
 with tab2:
     with st.form(key="data-inputs-3"):
-        file_path1=st.text_input("**Please enter filepath for delta table**")
+        file_path1=st.text_input("**Please enter S3 path for delta file**")
         submitted_1=st.form_submit_button('Export')
         if submitted_1:
             try:
                 obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
                 dataset = Dataset(dataset_id=params['dataset_id'])
                 my_bar = st.progress(0, text="Exporting ! Please wait.")
-                if ann_labels_only:
-                    df2=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
-                else:
-                    df2=export_inputs_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
-                with st.spinner('In progress...'):
+                df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
+    
+                with st.spinner('In progress...'): 
                     st.write("File to export",df2.head(10))
                     df2=spark.createDataFrame(df2)
                     my_bar.progress(int(80))

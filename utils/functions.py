@@ -20,17 +20,6 @@ def custom_warning_handler(message, category, filename, lineno, file=None, line=
     warning_message = f"{category.__name__}: {message} (File: {filename}, Line: {lineno})"
     st.warning(warning_message)
 
-def change_font_size(label, font_size='12px', font_color='black'):
-    html = f"""
-    <script>
-        var elems = window.parent.document.querySelectorAll('p');
-        var elem = Array.from(elems).find(x => x.innerText == '{label}');
-        elem.style.fontSize = '{font_size}';
-        elem.style.color = '{font_color}';
-    </script>
-    """
-    st.components.v1.html(html)
-
 def list_user_apps(user_id : str ):
    apps =list(User(user_id).list_apps())
    app_list=[]
@@ -44,6 +33,20 @@ def list_dataset(app_id,user_id):
    for dataset in list(app.list_datasets()):
       dataset_list.append(dataset.id)
    return dataset_list
+
+def export_images_to_volume(df_url, volumepath, workspace_client):
+    
+    for i in stqdm(range(len(df_url)), desc="Downloading Images"):
+        imgid = df_url.iloc[i]['input_id']
+        url = df_url.iloc[i]['image_url']
+        ext = df_url.iloc[i]['img_format']
+        img_name = os.path.join(volumepath, f"{imgid}.{ext.lower()}")
+        headers = {"Authorization": st.secrets.CLARIFAI_PAT}
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            workspace_client.files.upload(file_path=img_name, contents =response.content)
+
+    return 'done'
 
 def export_inputs_to_dataframe(input_obj ,dataset_id, bar):
     """Export all the inputs from clarifai App's dataset to spark dataframe.
@@ -89,36 +92,39 @@ def export_annotations_to_dataframe(input_obj,
     all_inputs = list(input_obj.list_inputs(dataset_id=dataset_id))
     response = list(input_obj.list_annotations(batch_input=all_inputs))
     counter=0
+    inp_dict={}
+    images_to_download=[]
+    for inp in all_inputs:
+      temp={}
+      temp['image_url'] = inp.data.image.url
+      temp['img_format']= inp.data.image.image_info.format
+      inp_dict[inp.id]=temp
+
     for an in stqdm(response,desc="Exporting annotations"):
+
       temp = {}
-      temp['annotation'] = json.loads(MessageToJson(an.data))
+      temp['annotation'] = str(an.data)
       if not temp['annotation'] or temp['annotation'] == '{}' or temp['annotation'] == {}:
         continue
-      temp['id'] = an.id
-      temp['user_id'] = an.user_id
+      temp['annotation_id'] = an.id
+      temp['annotation_user_id'] = an.user_id
       temp['input_id'] = an.input_id
+
+      if temp['input_id'] not in images_to_download :
+        val={"input_id":an.input_id}
+        val.update(inp_dict[an.input_id])
+        images_to_download.append(val)
+
       created_at = float(f"{an.created_at.seconds}.{an.created_at.nanos}")
-      temp['created_at'] = time.strftime('%m/%d/% %H:%M:%5', time.gmtime(created_at))
+      temp['annotation_created_at'] = time.strftime('%m/%d/% %H:%M:%5', time.gmtime(created_at))
       modified_at = float(f"{an.modified_at.seconds}.{an.modified_at.nanos}")
-      temp['modified_at'] = time.strftime('%m/%d/% %H:%M:%5', time.gmtime(modified_at))
+      temp['annotation_modified_at'] = time.strftime('%m/%d/% %H:%M:%5', time.gmtime(modified_at))
       annotation_list.append(temp)
       bar.progress(int((counter + 1) / len(response) * 60))
       counter+=1
     df = pd.DataFrame(annotation_list)
-    return df
-
-def export_images_to_volume(path,user_id,app_id):
-    input_obj = Inputs(user_id=user_id, app_id=app_id)
-    input_response = list(input_obj.list_inputs())
-    for resp in stqdm(input_response , desc="Downloading images"):
-      imgid = resp.id
-      ext = resp.data.image.image_info.format
-      url = resp.data.image.url
-      img_name = path + '/' + imgid + '.' + ext.lower()
-      headers = {"Authorization":f"Bearer {os.environ['CLARIFAI_PAT']}"}
-      response = requests.get(url, headers=headers)
-      with open(img_name, "wb") as f:
-        f.write(response.content)
+    df_url= pd.DataFrame(images_to_download)
+    return (df,df_url)
 
 
 def get_inputs_from_dataframe(dataframe,
@@ -243,7 +249,7 @@ def upload_from_dataframe(dataframe,
     except Exception as e:
         st.write(f'error:{e}')
 
-def upload_trigger_function(table_name,dataset_id,input_obj,ann_labels_only,file_type,spark_session, source = "Databricks"):
+def upload_trigger_function(table_name,dataset_id,input_obj,file_type,spark_session, source = "Databricks"):
    
    """Uploads the file to the clarifai app's dataset. Once upload button is triggered
    Args:
@@ -259,7 +265,7 @@ def upload_trigger_function(table_name,dataset_id,input_obj,ann_labels_only,file
    try:
         if file_type=="csv file":
             df1 = spark_session.read.csv(table_name,header=True, inferSchema=True)
-        elif file_type=="Delta Table":
+        elif file_type=="parquet":
             if source=="S3":
               df1=spark_session.read.format("delta").option("header", True).load(table_name)
             else:
@@ -274,10 +280,54 @@ def upload_trigger_function(table_name,dataset_id,input_obj,ann_labels_only,file
                                 dataset_id=dataset_id,
                                 input_type="image",
                                 df_type="url",
-                                labels=ann_labels_only)
+                                labels=True)
         my_bar.progress(int(100))
         st.success(f'datasets uploaded successfully')
         st.balloons()
             
    except Exception as e:
                 st.write(f'error : {e}') 
+                
+
+def upload_images_from_volume (databricks_host, databricks_token, volume_folder_path, userid, appid, datasetid):
+  url = f'{databricks_host}/api/2.1/jobs/run-now'
+
+  headers = {
+    'Content-Type': 'application/json',
+    'Authorization': f'Bearer {databricks_token}',
+  }
+
+  json_payload = {
+    "job_id": 130100571063000, # job id for upload images from volume
+    "queue": {
+      "enabled": True
+    },
+    "param": "overriding_val",
+    "job_parameters": 
+      {
+        "app_id": appid,
+        "dataset_id": datasetid,
+        "file_path":volume_folder_path,
+        "user_id": userid
+      } 
+  }
+  response = (requests.post(url, headers=headers, json=json_payload))
+  
+  if response.status_code != 200:
+    print(f"Failed to trigger job run. Status code: {response.status_code}")
+    print(response.text) 
+
+  runid=response.json()['run_id']
+
+  while True:
+      response_get = (requests.get(f'{databricks_host}/api/2.1/jobs/runs/get', headers=headers, json={
+      "run_id": runid})).json()
+      #st.write(response_json)
+      if response_get['state']['life_cycle_state'] not in ['RUNNING', 'QUEUED'] and response_get['state']['result_state'] in ['SUCCESS','FAILED']:
+        status=response_get['state']['result_state']
+        if status=="SUCCESS":
+          st.success('Images uploaded successfully')
+        else:
+          st.error('Images upload failed')
+        return status
+      time.sleep(15)
