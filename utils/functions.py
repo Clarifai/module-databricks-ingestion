@@ -10,7 +10,6 @@ from clarifai.errors import UserError
 from google.protobuf.json_format import MessageToJson
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from multiprocessing import cpu_count
-from clarifai.utils.misc import Chunker
 from google.protobuf.struct_pb2 import Struct
 from clarifai.client.input import Inputs
 from clarifai.client.user import User
@@ -265,7 +264,7 @@ def upload_trigger_function(table_name,dataset_id,input_obj,file_type,spark_sess
    try:
         if file_type=="csv file":
             df1 = spark_session.read.csv(table_name,header=True, inferSchema=True)
-        elif file_type=="parquet":
+        elif file_type=="Delta format (parquet)":
             if source=="S3":
               df1=spark_session.read.format("delta").option("header", True).load(table_name)
             else:
@@ -289,7 +288,7 @@ def upload_trigger_function(table_name,dataset_id,input_obj,file_type,spark_sess
                 st.write(f'error : {e}') 
                 
 
-def upload_images_from_volume (databricks_host, databricks_token, volume_folder_path, userid, appid, datasetid):
+def upload_images_from_volume (databricks_host, databricks_token, volume_folder_path, userid, appid, datasetid, job_id):
   url = f'{databricks_host}/api/2.1/jobs/run-now'
 
   headers = {
@@ -298,7 +297,7 @@ def upload_images_from_volume (databricks_host, databricks_token, volume_folder_
   }
 
   json_payload = {
-    "job_id": 130100571063000, # job id for upload images from volume
+    "job_id": job_id, # job id for upload images from volume
     "queue": {
       "enabled": True
     },
@@ -330,4 +329,4 @@ def upload_images_from_volume (databricks_host, databricks_token, volume_folder_
         else:
           st.error('Images upload failed')
         return status
-      time.sleep(15)
+      time.sleep(10)

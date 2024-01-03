@@ -81,7 +81,7 @@ if apps:
     }
     #ann_labels_only=st.checkbox("_Only export inputs with annotations_",key="ann_labels_only")
 
-st.write("###")
+st.write("##")
 
 st.write(f'<div class="logo">{space} Databricks </div>', unsafe_allow_html=True)
 st.write(
@@ -91,70 +91,47 @@ st.write(
   unsafe_allow_html=True,
 )
 
-tab1,tab2=st.tabs([f'**Databricks Unity Catalog**',f'**S3**'])
-with tab1:
-    table_landing=st.toggle("Create table under catalog")
-    if table_landing:
-        catalog=[catalog.full_name for catalog in wc.catalogs.list()]
-        catalog_selected = st.selectbox("**List of catalogs available**", catalog)
+st.write("##")
+table_landing=st.toggle("Create table under catalog")
+if table_landing:
+    catalog=[catalog.full_name for catalog in wc.catalogs.list()]
+    catalog_selected = st.selectbox("**List of catalogs available**", catalog)
 
-        if catalog_selected:
-            schema= [schema.name for schema in wc.schemas.list(catalog_name=catalog_selected)]
-            schema_selected = st.selectbox("**List of schemas available**", schema)
-    export_images=st.checkbox("**Export images**",key="export_images")
-    if export_images and not table_landing:
-        export_path=st.text_input("_Please enter volume path for image_", key="export_volume_path") 
-    if export_images and table_landing:
-        if schema_selected:
-            volumes=[vol.name for vol in wc.volumes.list(catalog_name=catalog_selected, schema_name=schema_selected)]
-            volume_selected = st.selectbox("**List of volumes available**", volumes)
-            export_path='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected+'/' 
+    if catalog_selected:
+        schema= [schema.name for schema in wc.schemas.list(catalog_name=catalog_selected)]
+        schema_selected = st.selectbox("**List of schemas available**", schema)
+export_images=st.checkbox("**Export images**",key="export_images")
+if export_images and not table_landing:
+    export_path=st.text_input("_Please enter volume path for image_", key="export_volume_path") 
+if export_images and table_landing:
+    if schema_selected:
+        volumes=[vol.name for vol in wc.volumes.list(catalog_name=catalog_selected, schema_name=schema_selected)]
+        volume_selected = st.selectbox("**List of volumes available**", volumes)
+        export_path='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected+'/' 
 
-    with st.form(key="data-inputs-2"):
-        table_name=st.text_input("**Please enter the delta table name**")
-        submitted_1=st.form_submit_button('Export')
-        if submitted_1:
-            try:
-                obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
-                dataset = Dataset(dataset_id=params['dataset_id'])
-                my_bar = st.progress(0, text="Exporting ! Please wait.")
-                df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
-                if export_images and export_path is not None :
-                        export_images_to_volume(df3, export_path, wc)
-                
-                with st.spinner('In progress...'):
-                    st.write("File to Export (Preview of sample structure from first 10 records)",df2.head(10))
-                    df2=spark.createDataFrame(df2)
+with st.form(key="data-inputs-2"):
+    table_name=st.text_input("**Please enter the delta table name**")
+    submitted_1=st.form_submit_button('Export')
+    if submitted_1:
+        try:
+            obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
+            dataset = Dataset(dataset_id=params['dataset_id'])
+            my_bar = st.progress(0, text="Exporting ! Please wait.")
+            df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
+            if export_images and export_path is not None :
+                    export_images_to_volume(df3, export_path, wc)
+            
+            with st.spinner('In progress...'):
+                st.write("File to Export (Preview of sample structure from first 10 records)",df2.head(10))
+                df2=spark.createDataFrame(df2)
 
-                    my_bar.progress(int(80))
-                    if table_landing:
-                       table_name= f"`{catalog_selected}`.`{schema_selected}`.{table_name}"  
-                    df2.write.mode('overwrite').option("overwriteSchema", "true").saveAsTable(table_name)
-                    my_bar.progress(int(100))
-                    st.success(f'Export annotation done successfully !!') 
-                    st.balloons()
+                my_bar.progress(int(80))
+                if table_landing:
+                    table_name= f"`{catalog_selected}`.`{schema_selected}`.{table_name}"  
+                df2.write.mode('overwrite').option("overwriteSchema", "true").saveAsTable(table_name)
+                my_bar.progress(int(100))
+                st.success(f'Export annotation done successfully !!') 
+                st.balloons()
 
-            except Exception as e:
-                st.write(f'error:{e}')
-
-with tab2:
-    with st.form(key="data-inputs-3"):
-        file_path1=st.text_input("**Please enter S3 path for delta file**")
-        submitted_1=st.form_submit_button('Export')
-        if submitted_1:
-            try:
-                obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
-                dataset = Dataset(dataset_id=params['dataset_id'])
-                my_bar = st.progress(0, text="Exporting ! Please wait.")
-                df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
-    
-                with st.spinner('In progress...'): 
-                    st.write("File to export",df2.head(10))
-                    df2=spark.createDataFrame(df2)
-                    my_bar.progress(int(80))
-                    df2.write.format("delta").option("overwriteSchema", "true").mode("overwrite").save(file_path1)
-                    my_bar.progress(int(100))
-                    st.success(f'Export annotation done successfully !!') 
-                    st.balloons()
-            except Exception as e:
-                st.write(f'error:{e}')
+        except Exception as e:
+            st.write(f'error:{e}')

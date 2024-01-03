@@ -81,7 +81,11 @@ with tab1:
             st.session_state.reset_session = True
             volumes=[vol.name for vol in wc.volumes.list(catalog_name=catalog_selected, schema_name=schema_selected)]
             volume_selected = st.selectbox(f"**List of volumes available**", volumes)
-            volume_folder_path='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected+'/'
+            if volume_selected:
+                 volume_folder_path='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected+'/'
+                 cols=st.columns(6)
+                 with cols[0]:
+                        job_id=st.text_input("**Enter Job-id :**", key="job_id")
     #file_type=st.radio(f"**Choose file type**",['Delta Table','csv file','Volume/Folder path'],key="file_type",horizontal=True)
     
     #Clarifai APP 
@@ -115,7 +119,7 @@ with tab1:
             with st.spinner('Uploading images from volume'):
                 upload_images_from_volume(st.secrets.DATABRICKS_HOST,st.secrets.DATABRICKS_TOKEN,
                                          volume_folder_path,params['user_id'],params['app_id'],
-                                        params['dataset_id'] )
+                                        params['dataset_id'], job_id)
               
  
 with tab2:
