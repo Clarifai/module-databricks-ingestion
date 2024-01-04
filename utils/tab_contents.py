@@ -76,10 +76,9 @@ def show_import_page(auth, config):
                     volume_folder_path='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected+'/'
                     cols=st.columns(4)
                     with cols[0]:
-                            job_id=st.text_input("**Enter Job-id (Description goes here) :**", key="job_id")
-                    with cols[1]:   
                             input_table=st.text_input("**Enter Inputs Delta table name :**", key="input_table_name")
                             input_table_name=f"`{catalog_selected}`.`{schema_selected}`.`{input_table}`"
+                            
         #file_type=st.radio(f"**Choose file type**",['Delta Table','csv file','Volume/Folder path'],key="file_type",horizontal=True)
         st.markdown("""<hr style="height:2px;border:none;color:#aaa;background-color:#aaa;" /> """, unsafe_allow_html=True)
 
@@ -111,11 +110,15 @@ def show_import_page(auth, config):
         
         if st.button('Upload', key='one'):
                 with st.spinner('Uploading images from volume'):
-                    upload_images_from_volume(st.secrets.DATABRICKS_HOST,st.secrets.DATABRICKS_TOKEN,
-                                            volume_folder_path,params['user_id'],params['app_id'],
-                                            params['dataset_id'], job_id)
-                    
-                if len(input_table_name) > 0 :
+                    image_upload=upload_images_from_volume(config.host, config.token, 
+                                              config.cluster_id, params['app_id'],
+                                              params['dataset_id'], volume_folder_path, params['user_id'] )
+                    if image_upload == "SUCCESS":
+                        st.success(f'Images uploaded successfully to Clarifai App')
+                    else:
+                        st.error(f'Error uploading images to Clarifai App')
+
+                if len(input_table) > 0 and image_upload == "SUCCESS":
                     with st.spinner('Exporting inputs to Delta table'):
                         df = export_inputs_to_dataframe(params['user_id'],params['app_id'],params['dataset_id'],spark)
                         df.write.mode("overwrite").saveAsTable(input_table_name)
@@ -210,7 +213,8 @@ def show_export_page(auth, config):
             "dataset_id": dataset_id
         }
         #ann_labels_only=st.checkbox("_Only export inputs with annotations_",key="ann_labels_only")
-
+    
+    st.markdown("""<hr style="height:2px;border:none;color:#aaa;background-color:#aaa;" /> """, unsafe_allow_html=True)
     st.write("##")
 
     st.write(f'<div class="logo">{space} Databricks </div>', unsafe_allow_html=True)
@@ -324,7 +328,7 @@ def show_update_page(auth, config):
             "dataset_id": dataset_id
         }
 
-
+    st.markdown("""<hr style="height:2px;border:none;color:#aaa;background-color:#aaa;" /> """, unsafe_allow_html=True)
     st.write("###")
     space="&nbsp;"*17
     st.markdown(
@@ -373,17 +377,19 @@ def show_update_page(auth, config):
                 tables=[table.name for table in wc.tables.list(catalog_name=catalog_selected, schema_name=schema_selected)]
                 delta_table_selected = st.selectbox(label=f"**Select Annotations delta table**", options=tables, key="table1")
             with cols[1]:
-                if delta_table_selected:
-                    inputs_delta_table=st.selectbox(label=f"**Select Inputs delta table**", options=tables, index=1, key="table2")
+                if delta_table_selected and len(tables) > 1:
+                    inputs_delta_table=st.selectbox(label=f"**Select Inputs delta table**", options=tables, key="table2")
                     if delta_table_selected == inputs_delta_table:
                         st.warning("_Please select a different table_")
                         
-    if delta_table_selected != inputs_delta_table:
+    if (delta_table_selected != inputs_delta_table):
         obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
         dataset = Dataset(dataset_id=params['dataset_id'])
+
         if st.button('Update', key='first_update'):
             my_bar = st.progress(0, text="Updating annotations ! Please wait.")
             df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
+
             with st.spinner('In progress...'):
                 df2=spark.createDataFrame(df2)
                 temp_table=df2.createOrReplaceTempView("source_table")

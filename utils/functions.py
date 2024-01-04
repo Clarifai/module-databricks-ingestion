@@ -294,53 +294,72 @@ def upload_trigger_function(table_name,dataset_id,input_obj,file_type,spark_sess
                                 df_type="url",
                                 labels=True)
         my_bar.progress(int(100))
-        st.success(f'datasets uploaded successfully')
-        st.balloons()
+        st.success(f'Inputs uploaded successfully')
             
    except Exception as e:
                 st.write(f'error : {e}') 
                 
 
-def upload_images_from_volume (databricks_host, databricks_token, volume_folder_path, userid, appid, datasetid, job_id ):
-  url = f'{databricks_host}/api/2.1/jobs/run-now'
+def upload_images_from_volume(db_host,db_token,cluster_id,app_id,dataset_id,file_path,user_id):
+    
+    databricks_host = db_host
+    databricks_token = db_token
 
-  headers = {
-    'Content-Type': 'application/json',
-    'Authorization': f'Bearer {databricks_token}',
-  }
+    url = f'{databricks_host}/api/2.1/jobs/runs/submit'
 
-  json_payload = {
-    "job_id": job_id, # job id for upload images from volume
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {databricks_token}',
+    }
+
+    json_payload = {
+        "git_source" :{
+            "git_url" :"https://github.com/Clarifai/clarifai-pyspark",
+            "git_provider" :"gitHub",
+            "git_branch" :"Modified-inputs-export-function", 
+        },
+
+        "tasks": [
+    {
+      "task_key": "test_ingestion",
+      "run_if": "ALL_SUCCESS",
+      "notebook_task": {
+        "notebook_path": "Job_script/image_ingestion_clarifai_job_nb",
+        "source": "GIT",
+        "base_parameters": {
+          "app_id": app_id,
+          "dataset_id": dataset_id,
+          "file_path":file_path,
+          "user_id":user_id
+        },
+      },
+      "existing_cluster_id": cluster_id,
+      "libraries": 
+        {
+          "pypi": {
+            "package": "clarifai-pyspark==0.0.3"
+          }
+        }
+      ,
+    }
+      ],
+        
     "queue": {
-      "enabled": True
-    },
-    "param": "overriding_val",
-    "job_parameters": 
-      {
-        "app_id": appid,
-        "dataset_id": datasetid,
-        "file_path":volume_folder_path,
-        "user_id": userid
-      } 
+    "enabled": True
+    }
   }
-  response = (requests.post(url, headers=headers, json=json_payload))
-  
-  if response.status_code != 200:
-    print(f"Failed to trigger job run. Status code: {response.status_code}")
-    print(response.text) 
+    
 
-  runid=response.json()['run_id']
-
-  while True:
-      response_get = (requests.get(f'{databricks_host}/api/2.1/jobs/runs/get', headers=headers, json={
-      "run_id": runid})).json()
-      #st.write(response_json)
-      if response_get['state']['life_cycle_state'] not in ['RUNNING', 'QUEUED'] and response_get['state']['result_state'] in ['SUCCESS','FAILED']:
-        status=response_get['state']['result_state']
-        if status=="SUCCESS":
-          st.success('Images uploaded successfully')
-        else:
-          st.error('Images upload failed')
-        return status
-      time.sleep(10)
-
+    response = requests.post(url, headers=headers, json=json_payload)
+    c=response.json()
+    # Check the response
+    runid=c['run_id']
+    while True:
+      response2 = requests.get(f'{databricks_host}/api/2.1/jobs/runs/get', headers=headers, json={
+      "run_id": runid})
+      c2=response2.json()
+      if c2['state']['life_cycle_state'] != 'RUNNING' and c2['state']['result_state'] in ['SUCCESS','FAILED']:
+        status=c2['state']['result_state']
+        break
+      time.sleep(5)
+    return status
