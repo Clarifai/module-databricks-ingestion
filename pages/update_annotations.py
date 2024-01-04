@@ -10,7 +10,7 @@ from databricks.sdk.core import Config
 from databricks.sdk import WorkspaceClient
 from google.protobuf.json_format import MessageToJson
 
-from utils.functions import list_user_apps, list_dataset, export_annotations_to_dataframe
+from utils.functions import list_user_apps, list_dataset, export_annotations_to_dataframe, export_inputs_to_dataframe
 
 st.set_page_config(layout="wide")
 ClarifaiStreamlitCSS.insert_default_css(st)
@@ -29,7 +29,7 @@ spark = DatabricksSession.builder.sdkConfig(config).getOrCreate()
 wc = WorkspaceClient(host= st.secrets.DATABRICKS_HOST,token= st.secrets.DATABRICKS_TOKEN,)
 
 
-st.title("Databricks UI Module to Update Annotations")
+st.title("Databricks UI Module to Update tables")
 
 if 'reset_session' not in st.session_state:
     st.session_state.reset_session = False
@@ -116,46 +116,54 @@ st.write(
   unsafe_allow_html=True,
 )
 st.write("###")
-table_loc=st.toggle("**_select table under catalog_**",key="table_loc")
-if table_loc:
-    catalog=[catalog.full_name for catalog in wc.catalogs.list()]
-    catalog_selected = st.selectbox(f"**List of catalogs available**", catalog, index=1)
 
-    if catalog_selected:
+catalog=[catalog.full_name for catalog in wc.catalogs.list()]
+catalog_selected = st.selectbox(f"**List of catalogs available**", catalog, index=1)
+
+if catalog_selected:
+    st.session_state.reset_session = True
+    schema= [schema.name for schema in wc.schemas.list(catalog_name=catalog_selected)]
+    schema_selected = st.selectbox(f"**List of schemas available**", schema)
+    if schema_selected:
         st.session_state.reset_session = True
-        schema= [schema.name for schema in wc.schemas.list(catalog_name=catalog_selected)]
-        schema_selected = st.selectbox(f"**List of schemas available**", schema)
-        if schema_selected:
-            st.session_state.reset_session = True
+        cols=st.columns(4)
+        with cols[0]:
             tables=[table.name for table in wc.tables.list(catalog_name=catalog_selected, schema_name=schema_selected)]
-            table_selected = st.selectbox(f"**List of tables available**", tables)
-            table_name=table_selected
-
-if not table_loc:    
-    table_name=st.text_input("**Enter table name**",key="table_name")
-
-if table_name:
+            delta_table_selected = st.selectbox(f"**Select Annotations delta table**", tables)
+        with cols[1]:
+            if delta_table_selected:
+                inputs_delta_table=st.selectbox(f"**Select Inputs delta table**", tables, index=1)
+                if delta_table_selected == inputs_delta_table:
+                    st.warning("_Please select a different table_")
+                    
+if delta_table_selected != inputs_delta_table:
     obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
     dataset = Dataset(dataset_id=params['dataset_id'])
-    if st.button('Upload', key='first_update'):
+    if st.button('Update', key='first_update'):
         my_bar = st.progress(0, text="Updating annotations ! Please wait.")
         df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
         with st.spinner('In progress...'):
             df2=spark.createDataFrame(df2)
             temp_table=df2.createOrReplaceTempView("source_table")
-            st.write("Data to upsert (Preview of sample structure from first 10 records)",spark.sql(f"SELECT * FROM source_table LIMIT 10").toPandas())
-            if table_loc:
-                spark.sql(f"""USE CATALOG {catalog_selected} ;""")
-                spark.sql(f"USE SCHEMA {schema_selected} ;")
-            if not table_loc :
-                spark.sql(f"USE CATALOG hive_metastore ;")
-                spark.sql(f"USE SCHEMA default ;")
-            spark.sql(f"""MERGE INTO `{table_name}` as target_table
+            st.write("Annotations Data to upsert (Preview of sample structure from first 5 records)",spark.sql(f"SELECT * FROM source_table LIMIT 5").toPandas())
+            spark.sql(f"""USE CATALOG `{catalog_selected}` ;""")
+            spark.sql(f"USE SCHEMA `{schema_selected}` ;")
+            spark.sql(f"""MERGE INTO `{delta_table_selected}` as target_table
                     USING source_table ON target_table.annotation_id = source_table.annotation_id
                     WHEN MATCHED AND source_table.annotation_modified_at > target_table.annotation_modified_at
                     THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT * ; """)
+            
+            if inputs_delta_table:
+                input_df=export_inputs_to_dataframe(params['user_id'],params['app_id'],params['dataset_id'],spark)
+                input_df.createOrReplaceTempView("input_source_table")
+                st.write("Input Data to upsert (Preview of sample structure from first 5 records)",spark.sql(f"SELECT * FROM input_source_table LIMIT 5").toPandas())
+                spark.sql(f"""MERGE INTO `{inputs_delta_table}` as target_table
+                        USING input_source_table ON target_table.input_id = input_source_table.input_id
+                        WHEN MATCHED THEN UPDATE SET * 
+                        WHEN NOT MATCHED THEN INSERT * ; """)
+            
             my_bar.progress(int(100))
-            st.success("Annotations updated successfully")
+            st.success("Tables updated successfully")
          
     
 

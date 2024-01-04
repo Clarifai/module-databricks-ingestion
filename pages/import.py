@@ -10,7 +10,7 @@ from databricks.sdk.core import Config
 from databricks.sdk import WorkspaceClient
 from google.protobuf.json_format import MessageToJson
 
-from utils.functions import upload_from_dataframe, list_user_apps, list_dataset, upload_trigger_function, upload_images_from_volume
+from utils.functions import export_inputs_to_dataframe, list_user_apps, list_dataset, upload_trigger_function, upload_images_from_volume
 
 st.set_page_config(layout="wide")
 ClarifaiStreamlitCSS.insert_default_css(st)
@@ -18,7 +18,6 @@ ClarifaiStreamlitCSS.insert_default_css(st)
 # This must be within the display() function.
 auth = ClarifaiAuthHelper.from_streamlit(st)
 os.environ['CLARIFAI_PAT']=st.secrets.CLARIFAI_PAT
-
 
 config = Config(
   host       = st.secrets.DATABRICKS_HOST,
@@ -32,6 +31,7 @@ st.title("Databricks UI module for Import")
 if 'reset_session' not in st.session_state:
     st.session_state.reset_session = False
 
+st.markdown("""<hr style="height:2px;border:none;color:#555;background-color:#555;" /> """, unsafe_allow_html=True)
 query_params = st.experimental_get_query_params()
 user_id=query_params.get("user_id", [])[0]
 space="&nbsp;"*17
@@ -83,14 +83,17 @@ with tab1:
             volume_selected = st.selectbox(f"**List of volumes available**", volumes)
             if volume_selected:
                  volume_folder_path='/Volumes/'+catalog_selected+'/'+schema_selected+'/'+volume_selected+'/'
-                 cols=st.columns(6)
+                 cols=st.columns(4)
                  with cols[0]:
-                        job_id=st.text_input("**Enter Job-id :**", key="job_id")
+                        job_id=st.text_input("**Enter Job-id (Description goes here) :**", key="job_id")
+                 with cols[1]:   
+                        input_table=st.text_input("**Enter Inputs Delta table name :**", key="input_table_name")
+                        input_table_name=f"`{catalog_selected}`.`{schema_selected}`.`{input_table}`"
     #file_type=st.radio(f"**Choose file type**",['Delta Table','csv file','Volume/Folder path'],key="file_type",horizontal=True)
-    
+    st.markdown("""<hr style="height:2px;border:none;color:#555;background-color:#555;" /> """, unsafe_allow_html=True)
+
     #Clarifai APP 
     #To give some space above the logo
-    st.write("##")
     st.write(f'<div class="logo">{space}Clarifai App</div>', unsafe_allow_html=True)
     st.write(
     '<div class="logo-container">'
@@ -119,14 +122,20 @@ with tab1:
             with st.spinner('Uploading images from volume'):
                 upload_images_from_volume(st.secrets.DATABRICKS_HOST,st.secrets.DATABRICKS_TOKEN,
                                          volume_folder_path,params['user_id'],params['app_id'],
-                                        params['dataset_id'], job_id)
-              
+                                         params['dataset_id'], job_id)
+                
+            if len(input_table_name) > 0 :
+                with st.spinner('Exporting inputs to Delta table'):
+                    df = export_inputs_to_dataframe(params['user_id'],params['app_id'],params['dataset_id'],spark)
+                    df.write.mode("overwrite").saveAsTable(input_table_name)
+                    st.success(f'Inputs exported successfully to {input_table_name}')
+                
  
 with tab2:
   file_type=st.radio(f"**Choose file format type with source information as URLs**",['csv file','Delta format (parquet)'],key="file_type2",horizontal=False)
   file_path3=st.text_input(f"**Please enter source file S3 link**", key="s3path")
-  st.write("##")
-
+  
+  st.markdown("""<hr style="height:2px;border:none;color:#555;background-color:#555;" /> """, unsafe_allow_html=True)
   st.write(f'<div class="logo">{space}Clarifai App</div>', unsafe_allow_html=True)
   st.write(
   '<div class="logo-container">'

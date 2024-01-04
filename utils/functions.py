@@ -6,18 +6,18 @@ import requests
 from stqdm import stqdm
 import pandas as pd
 import streamlit as st
-from clarifai.errors import UserError
-from google.protobuf.json_format import MessageToJson
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from multiprocessing import cpu_count
-from google.protobuf.struct_pb2 import Struct
-from clarifai.client.input import Inputs
-from clarifai.client.user import User
-from clarifai.client.app import App
 
-def custom_warning_handler(message, category, filename, lineno, file=None, line=None):
-    warning_message = f"{category.__name__}: {message} (File: {filename}, Line: {lineno})"
-    st.warning(warning_message)
+from google.protobuf.struct_pb2 import Struct
+from google.protobuf.json_format import MessageToDict
+from google.protobuf.json_format import MessageToJson
+
+from clarifai.client.app import App
+from clarifai.client.user import User
+from clarifai.errors import UserError
+from clarifai.client.input import Inputs
+from clarifai.client.search import Search
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def list_user_apps(user_id : str ):
    apps =list(User(user_id).list_apps())
@@ -40,31 +40,36 @@ def export_images_to_volume(df_url, volumepath, workspace_client):
         url = df_url.iloc[i]['image_url']
         ext = df_url.iloc[i]['img_format']
         img_name = os.path.join(volumepath, f"{imgid}.{ext.lower()}")
-        headers = {"Authorization": st.secrets.CLARIFAI_PAT}
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            workspace_client.files.upload(file_path=img_name, contents =response.content)
+        headers = {"Authorization": f"Key {st.secrets.CLARIFAI_PAT}" }
+        try:
+          response = requests.get(url, headers=headers)
+          if response.status_code == 200:
+              workspace_client.files.upload(file_path=img_name, contents =response.content)
+        except Exception as e: 
+          st.write(f'error downloading images : {e}')
 
-    return 'done'
-
-def export_inputs_to_dataframe(input_obj ,dataset_id, bar):
-    """Export all the inputs from clarifai App's dataset to spark dataframe.
+def export_inputs_to_dataframe(user_id, app_id, dataset_id, spark_session):
+    
+    """Export all the inputs from clarifai App's dataset to deltatable.
 
     Args:
-        input_obj (Clarifai INPUT object): Input object for the clarifai app.
+        user_id (str): User id of the clarifai app.
+        app_id (str): App id of the clarifai app.
         dataset_id (str): Dataset id of the clarifai app.
+        spark_session (spark session): spark session object.
 
     Examples:
         TODO
 
     Returns:
-        spark dataframe with inputs"""
+        None """
     
-
-    input_list = []
-    response = list(input_obj.list_inputs(dataset_id=dataset_id))
-    counter=0
-    for inp in response:
+    search_obj = Search(user_id=user_id, app_id=app_id)
+    search_response = search_obj.query(filters=[{"input_types":["image"]},{"input_dataset_ids":[dataset_id]}])
+    inputs=[hit.input for response in search_response for hit in response.hits ]
+    input_list=[]
+    
+    for inp in inputs:
       temp = {}
       temp['input_id'] = inp.id
       temp['image_url'] = inp.data.image.url
@@ -73,15 +78,23 @@ def export_inputs_to_dataframe(input_obj ,dataset_id, bar):
         created_at = float(f"{inp.created_at.seconds}.{inp.created_at.nanos}")
         temp['input_created_at'] = time.strftime('%m/%d/% %H:%M:%5', time.gmtime(created_at))
         modified_at = float(f"{inp.modified_at.seconds}.{inp.modified_at.nanos}")
-        temp['input_modified_at'] = time.strftime('%m/%d/% %H:%M:%5', time.gmtime(modified_at))
+        temp['input_modified_at'] = time.strftime('%m/%d/% %H:%M:%5',
+                                                       time.gmtime(modified_at))
       except:
         temp['input_created_at'] = float(f"{inp.created_at.seconds}.{inp.created_at.nanos}")
         temp['input_modified_at'] = float(f"{inp.modified_at.seconds}.{inp.modified_at.nanos}")
+      try:
+        temp['input_metadata'] = str(MessageToDict(inp.data.metadata))
+      except:
+        temp['input_metadata'] = None
       input_list.append(temp)
-      bar.progress(int((counter + 1) / len(response) * 60))
-      counter+=1
-
-    return pd.DataFrame(input_list)
+    try:
+        spark_df=spark_session.createDataFrame(input_list)
+        
+    except Exception as e:
+          raise RuntimeError(f'Error: {e}')
+    
+    return spark_df
 
 def export_annotations_to_dataframe(input_obj,
                                     dataset_id,
@@ -288,7 +301,7 @@ def upload_trigger_function(table_name,dataset_id,input_obj,file_type,spark_sess
                 st.write(f'error : {e}') 
                 
 
-def upload_images_from_volume (databricks_host, databricks_token, volume_folder_path, userid, appid, datasetid, job_id):
+def upload_images_from_volume (databricks_host, databricks_token, volume_folder_path, userid, appid, datasetid, job_id ):
   url = f'{databricks_host}/api/2.1/jobs/run-now'
 
   headers = {
@@ -330,3 +343,4 @@ def upload_images_from_volume (databricks_host, databricks_token, volume_folder_
           st.error('Images upload failed')
         return status
       time.sleep(10)
+
