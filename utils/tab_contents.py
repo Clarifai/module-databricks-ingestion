@@ -381,37 +381,37 @@ def show_update_page(auth, config):
                     inputs_delta_table=st.selectbox(label=f"**Select Inputs delta table**", options=tables, key="table2")
                     if delta_table_selected == inputs_delta_table:
                         st.warning("_Please select a different table_")
-                        
-    if (delta_table_selected != inputs_delta_table):
-        obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
-        dataset = Dataset(dataset_id=params['dataset_id'])
+    if delta_table_selected:                   
+        if (delta_table_selected != inputs_delta_table):
+            obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
+            dataset = Dataset(dataset_id=params['dataset_id'])
 
-        if st.button('Update', key='first_update'):
-            my_bar = st.progress(0, text="Updating annotations ! Please wait.")
-            df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
+            if st.button('Update', key='first_update'):
+                my_bar = st.progress(0, text="Updating annotations ! Please wait.")
+                df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
 
-            with st.spinner('In progress...'):
-                df2=spark.createDataFrame(df2)
-                temp_table=df2.createOrReplaceTempView("source_table")
-                st.write("Annotations Data to upsert (Preview of sample structure from first 5 records)",spark.sql(f"SELECT * FROM source_table LIMIT 5").toPandas())
-                spark.sql(f"""USE CATALOG `{catalog_selected}` ;""")
-                spark.sql(f"USE SCHEMA `{schema_selected}` ;")
-                spark.sql(f"""MERGE INTO `{delta_table_selected}` as target_table
-                        USING source_table ON target_table.annotation_id = source_table.annotation_id
-                        WHEN MATCHED AND source_table.annotation_modified_at > target_table.annotation_modified_at
-                        THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT * ; """)
-                
-                if inputs_delta_table:
-                    input_df=export_inputs_to_dataframe(params['user_id'],params['app_id'],params['dataset_id'],spark)
-                    input_df.createOrReplaceTempView("input_source_table")
-                    st.write("Input Data to upsert (Preview of sample structure from first 5 records)",spark.sql(f"SELECT * FROM input_source_table LIMIT 5").toPandas())
-                    spark.sql(f"""MERGE INTO `{inputs_delta_table}` as target_table
-                            USING input_source_table ON target_table.input_id = input_source_table.input_id
-                            WHEN MATCHED THEN UPDATE SET * 
-                            WHEN NOT MATCHED THEN INSERT * ; """)
-                
-                my_bar.progress(int(100))
-                st.success("Tables updated successfully")
+                with st.spinner('In progress...'):
+                    df2=spark.createDataFrame(df2)
+                    temp_table=df2.createOrReplaceTempView("source_table")
+                    st.write("Annotations Data to upsert (Preview of sample structure from first 5 records)",spark.sql(f"SELECT * FROM source_table LIMIT 5").toPandas())
+                    spark.sql(f"""USE CATALOG `{catalog_selected}` ;""")
+                    spark.sql(f"USE SCHEMA `{schema_selected}` ;")
+                    spark.sql(f"""MERGE INTO `{delta_table_selected}` as target_table
+                            USING source_table ON target_table.annotation_id = source_table.annotation_id
+                            WHEN MATCHED AND source_table.annotation_modified_at > target_table.annotation_modified_at
+                            THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT * ; """)
+                    
+                    if inputs_delta_table:
+                        input_df=export_inputs_to_dataframe(params['user_id'],params['app_id'],params['dataset_id'],spark)
+                        input_df.createOrReplaceTempView("input_source_table")
+                        st.write("Input Data to upsert (Preview of sample structure from first 5 records)",spark.sql(f"SELECT * FROM input_source_table LIMIT 5").toPandas())
+                        spark.sql(f"""MERGE INTO `{inputs_delta_table}` as target_table
+                                USING input_source_table ON target_table.input_id = input_source_table.input_id
+                                WHEN MATCHED THEN UPDATE SET * 
+                                WHEN NOT MATCHED THEN INSERT * ; """)
+                    
+                    my_bar.progress(int(100))
+                    st.success("Tables updated successfully")
             
         
 

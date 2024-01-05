@@ -10,6 +10,7 @@ from databricks.sdk.core import Config
 from databricks.sdk import WorkspaceClient
 from google.protobuf.json_format import MessageToJson
 
+from utils.functions import validate_databricks_config
 from utils.tab_contents import show_import_page, show_export_page, show_update_page
 
 st.set_page_config(layout="wide")
@@ -32,37 +33,48 @@ st.title("Databricks UI Module")
 
 ## Settings
 if not 'dconfig' in st.session_state:
-    st.header("Configuration")
+    st.markdown("<h3 style='margin-bottom: 1px;'>Configuration</h3>", unsafe_allow_html=True)
     st.markdown("Please provide the following information to connect to your Databricks Workspace.")
-    st.markdown("---")
+    #st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Databricks Host**")
-        st.markdown("Please enter the Databricks Host")
-    with c2:
-        dhost = st.text_input("", key="dhost", label_visibility="hidden", type="password")
-    st.markdown("---")
+    with st.form(key='my_form'):
+        c1, c2, c3 = st.columns([1,1,0.5])
+        with c1:
+            st.markdown("<div style='margin-bottom: 12px;'><strong>Databricks Host</strong></div>", unsafe_allow_html=True)
+            st.markdown("Please enter the Databricks Host")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Databricks Token**")
-        st.markdown("Please enter the Databricks Token")
-    with c2:
-        dtoken = st.text_input("", key="dtoken", label_visibility="hidden", type="password")
-    st.markdown("---")
+        with c2:
+            dhost = st.text_input("", key="2", label_visibility="hidden", type="password", placeholder="Example: https://dbc-a1b2345c-d6e7.cloud.databricks.com")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Databricks Cluster ID**")
-        st.markdown("Please enter the Databricks Cluster ID")
-    with c2:
-        dcluster = st.text_input("", key="dcluster", label_visibility="hidden", type="password")
+        st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
-    st.markdown("---")
+        c1, c2, c3 = st.columns([1,1,0.5])
+        with c1:
+            st.markdown("<div style='margin-bottom: 12px;'><strong>Databricks Token</strong></div>", unsafe_allow_html=True)
+            st.markdown("Please enter the Databricks Token")
+
+        with c2:
+            dtoken = st.text_input("", key="4", label_visibility="hidden", type="password" , placeholder="Starts with dapib***********************")
+
+        st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
+
+        c1, c2, c3 = st.columns([1,1,0.5])
+        with c1:
+            st.markdown("<div style='margin-bottom: 12px;'><strong>Databricks Cluster ID</strong></div>", unsafe_allow_html=True)
+            st.markdown("Please enter the Databricks Cluster ID")
+
+        with c2:
+            dcluster = st.text_input("", key="6", label_visibility="hidden", type="password", placeholder="1234-567890-abc12abc")
+
+        #st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
+        submitted = st.form_submit_button('Authenticate')
+
+    if submitted:
+        with st.spinner("Authenticating to Databricks Workspace..."):
+            status=validate_databricks_config(dhost, dtoken, dcluster)
     
     # st.write(f"dhost: {dhost}, dtoken: {dtoken}, dcluster: {dcluster}") 
-    if dhost and dtoken and dcluster:
+    if submitted and status:
         st.session_state['dconfig'] = Config(
             host       = dhost,
             token      = dtoken,

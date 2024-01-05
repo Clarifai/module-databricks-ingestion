@@ -33,6 +33,28 @@ def list_dataset(app_id,user_id):
       dataset_list.append(dataset.id)
    return dataset_list
 
+def validate_databricks_config(host,token,cluster_id):
+    url = f'{host}/api/2.0/clusters/list'
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {token}',
+    }
+    response = requests.get(url, headers=headers, json={})
+    try:
+      if response.status_code == 200:
+          if cluster_id in [cl["cluster_id"] for cl in (response.json())["clusters"]]:
+            st.success(f'Authenticated successfully')
+            return True
+          else:
+             st.error(f'Invalid cluster id')
+      if response.status_code != 200:
+          st.write(response.json())
+          st.error(f'Authentication error')   
+
+    except Exception as e : 
+       st.error(f'Authentication error : {e}')
+
 def export_images_to_volume(df_url, volumepath, workspace_client):
     
     for i in stqdm(range(len(df_url)), desc="Downloading Images"):
@@ -316,7 +338,7 @@ def upload_images_from_volume(db_host,db_token,cluster_id,app_id,dataset_id,file
         "git_source" :{
             "git_url" :"https://github.com/Clarifai/clarifai-pyspark",
             "git_provider" :"gitHub",
-            "git_branch" :"Modified-inputs-export-function", 
+            "git_branch" :"main", 
         },
 
         "tasks": [
