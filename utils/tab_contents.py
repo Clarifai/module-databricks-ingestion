@@ -13,6 +13,8 @@ from google.protobuf.json_format import MessageToJson
 from utils.functions import export_annotations_to_dataframe, export_inputs_to_dataframe, list_dataset, list_user_apps, export_images_to_volume
 from utils.functions import export_inputs_to_dataframe, list_user_apps, list_dataset, upload_trigger_function, upload_images_from_volume
 
+query_params = st.experimental_get_query_params()
+clarifai_pat=query_params.get("pat", [])[0]
 
 def show_import_page(auth, config):
     spark = DatabricksSession.builder.sdkConfig(config).getOrCreate()
@@ -84,6 +86,7 @@ def show_import_page(auth, config):
 
         #Clarifai APP 
         #To give some space above the logo
+        st.write("###")
         st.write(f'<div class="logo">{space}Clarifai App</div>', unsafe_allow_html=True)
         st.write(
         '<div class="logo-container">'
@@ -128,8 +131,9 @@ def show_import_page(auth, config):
     with tab2:
         file_type=st.radio(f"**Choose file format type with source information as URLs**",['csv file','Delta format (parquet)'],key="file_type2",horizontal=False)
         file_path3=st.text_input(f"**Please enter source file S3 link**", key="s3path")
-        
-        st.markdown("""<hr style="height:2px;border:none;color:#555;background-color:#555;" /> """, unsafe_allow_html=True)
+        st.markdown("""<hr style="height:2px;border:none;color:#aaa;background-color:#aaa;" /> """, unsafe_allow_html=True)
+
+        st.write("###")
         st.write(f'<div class="logo">{space}Clarifai App</div>', unsafe_allow_html=True)
         st.write(
         '<div class="logo-container">'
@@ -148,8 +152,8 @@ def show_import_page(auth, config):
                 "dataset_id": dataset_id
             }
             #ann_labels_only=st.checkbox("_upload inputs with labels/concepts_",key="ann_labels_only2")
-            input_obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
-            dataset = Dataset(dataset_id=params['dataset_id'])
+            input_obj=Inputs(user_id=params['user_id'], app_id=params['app_id'], pat=clarifai_pat )
+            dataset = Dataset(dataset_id=params['dataset_id'], pat=clarifai_pat)
 
         if st.button('Upload', key='two'):
             upload_trigger_function(file_path3,dataset_id,input_obj,file_type,spark, source="S3")
@@ -247,8 +251,8 @@ def show_export_page(auth, config):
         submitted_1=st.form_submit_button('Export')
         if submitted_1:
             try:
-                obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
-                dataset = Dataset(dataset_id=params['dataset_id'])
+                obj=Inputs(user_id=params['user_id'], app_id=params['app_id'], pat=clarifai_pat)
+                dataset = Dataset(dataset_id=params['dataset_id'], pat=clarifai_pat)
                 my_bar = st.progress(0, text="Exporting ! Please wait.")
                 df2,df3=export_annotations_to_dataframe(input_obj=obj,dataset_id=dataset.id, bar=my_bar)
                 
@@ -383,8 +387,8 @@ def show_update_page(auth, config):
                         st.warning("_Please select a different table_")
     if delta_table_selected:                   
         if (delta_table_selected != inputs_delta_table):
-            obj=Inputs(user_id=params['user_id'], app_id=params['app_id'])
-            dataset = Dataset(dataset_id=params['dataset_id'])
+            obj=Inputs(user_id=params['user_id'], app_id=params['app_id'], pat=clarifai_pat)
+            dataset = Dataset(dataset_id=params['dataset_id'], pat=clarifai_pat)
 
             if st.button('Update', key='first_update'):
                 my_bar = st.progress(0, text="Updating annotations ! Please wait.")

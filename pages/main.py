@@ -10,7 +10,7 @@ from databricks.sdk.core import Config
 from databricks.sdk import WorkspaceClient
 from google.protobuf.json_format import MessageToJson
 
-from utils.functions import validate_databricks_config
+from utils.functions import validate_databricks_config, set_global_pat
 from utils.tab_contents import show_import_page, show_export_page, show_update_page
 
 st.set_page_config(layout="wide")
@@ -18,7 +18,11 @@ ClarifaiStreamlitCSS.insert_default_css(st)
 
 # This must be within the display() function.
 auth = ClarifaiAuthHelper.from_streamlit(st)
-os.environ['CLARIFAI_PAT']=st.secrets.CLARIFAI_PAT
+query_params = st.experimental_get_query_params()
+clarifai_pat=query_params.get("pat", [])[0]
+
+if clarifai_pat:
+    set_global_pat(clarifai_pat)
 
 def show_tabs():    
     import_tab, export_tab, update_tab = st.tabs(["Import", "Export", "Update"])
@@ -29,7 +33,7 @@ def show_tabs():
     with update_tab:
         show_update_page(auth, st.session_state['dconfig'])
 
-st.title("Databricks UI Module")
+st.title("Databricks-Connect UI Module")
 
 ## Settings
 if not 'dconfig' in st.session_state:
@@ -44,7 +48,7 @@ if not 'dconfig' in st.session_state:
             st.markdown("Please enter the Databricks Host")
 
         with c2:
-            dhost = st.text_input("", key="2", label_visibility="hidden", type="password", placeholder="Example: https://dbc-a1b2345c-d6e7.cloud.databricks.com")
+            dhost = st.text_input("-", key="2", label_visibility="hidden", type="password", placeholder="Example: https://dbc-a1b2345c-d6e7.cloud.databricks.com")
 
         st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
@@ -54,7 +58,7 @@ if not 'dconfig' in st.session_state:
             st.markdown("Please enter the Databricks Token")
 
         with c2:
-            dtoken = st.text_input("", key="4", label_visibility="hidden", type="password" , placeholder="Starts with dapib***********************")
+            dtoken = st.text_input("-", key="4", label_visibility="hidden", type="password" , placeholder="Starts with dapib***********************")
 
         st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
 
@@ -64,7 +68,7 @@ if not 'dconfig' in st.session_state:
             st.markdown("Please enter the Databricks Cluster ID")
 
         with c2:
-            dcluster = st.text_input("", key="6", label_visibility="hidden", type="password", placeholder="1234-567890-abc12abc")
+            dcluster = st.text_input("-", key="6", label_visibility="hidden", type="password", placeholder="1234-567890-abc12abc")
 
         #st.markdown("<hr style='margin: 5px 0;'>", unsafe_allow_html=True)
         submitted = st.form_submit_button('Authenticate')

@@ -19,15 +19,21 @@ from clarifai.client.search import Search
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+def set_global_pat(pat):
+    global global_pat
+    global_pat = pat
+
 def list_user_apps(user_id : str ):
-   apps =list(User(user_id).list_apps())
+   global global_pat
+   apps =list(User(user_id, pat=global_pat).list_apps())
    app_list=[]
    for app in apps:
       app_list.append(app.id)
    return app_list
 
 def list_dataset(app_id,user_id):
-   app = App(app_id=app_id, user_id=user_id)
+   global global_pat
+   app = App(app_id=app_id, user_id=user_id, pat=global_pat)
    dataset_list=[]
    for dataset in list(app.list_datasets()):
       dataset_list.append(dataset.id)
@@ -86,7 +92,8 @@ def export_inputs_to_dataframe(user_id, app_id, dataset_id, spark_session):
     Returns:
         None """
     
-    search_obj = Search(user_id=user_id, app_id=app_id)
+    global global_pat
+    search_obj = Search(user_id=user_id, app_id=app_id, pat=global_pat)
     search_response = search_obj.query(filters=[{"input_types":["image"]},{"input_dataset_ids":[dataset_id]}])
     inputs=[hit.input for response in search_response for hit in response.hits ]
     input_list=[]
@@ -305,7 +312,7 @@ def upload_trigger_function(table_name,dataset_id,input_obj,file_type,spark_sess
             else:
               df1=spark_session.sql(f"SELECT * FROM {table_name}" )
 
-        with st.spinner('In progress...'):
+        with st.spinner('Uploading...'):
             st.write("File to be uploaded (Preview of sample structure from first 10 records)",df1.toPandas().head(5))  
         my_bar = st.progress(0, text="Uploading ! Please wait.")
         upload_from_dataframe(dataframe=df1,
